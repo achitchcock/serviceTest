@@ -3,18 +3,25 @@ package uwb.aaron.com.servicetest;
 import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.SurfaceTexture;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ResultReceiver;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
+import android.view.TextureView;
 import android.widget.Toast;
 
 import dji.common.error.DJIError;
 import dji.common.error.DJISDKError;
+import dji.common.product.Model;
 import dji.sdk.base.BaseComponent;
 import dji.sdk.base.BaseProduct;
 import dji.sdk.camera.Camera;
+import dji.sdk.camera.VideoFeeder;
+import dji.sdk.codec.DJICodecManager;
 import dji.sdk.products.Aircraft;
 import dji.sdk.products.HandHeld;
 import dji.sdk.sdkmanager.DJISDKManager;
@@ -23,7 +30,7 @@ import com.secneo.sdk.Helper;
 
 
 
-public class djiBackend extends Application {
+public class djiBackend extends Application implements TextureView.SurfaceTextureListener{
     public static final String FLAG_CONNECTION_CHANGE = "activationDemo_connection_change";
 
     private DJISDKManager.SDKManagerCallback mDJISDKManagerCallback;
@@ -34,9 +41,18 @@ public class djiBackend extends Application {
 
     private Application instance;
 
+    private String TAG = "BACKEND_DRONE";
+    private TextureView baseTV;
+    protected VideoFeeder.VideoDataCallback mReceivedVideoDataCallBack = null;
+    protected DJICodecManager mCodecManager = null;
+    private ResultReceiver rec;
+
+
+    private int vid = 0;
     public void setContext(Application application) {
         instance = application;
     }
+    public void setResultReceiver(ResultReceiver res){rec = res;}
 
     @Override
     public Context getApplicationContext() {
@@ -84,14 +100,8 @@ public class djiBackend extends Application {
 
     @Override
     public void onCreate() {
+        Log.d(TAG, "onCreate: DJIBACKEND LOG TESTING");
         super.onCreate();
-        try{
-            Helper.install(this);
-        }catch (Exception exc){
-            Log.d("BACKEND_DRONE", "helper install failed");
-            Log.d("BACKGROUND_DRONE", exc.toString());
-        }
-
         mHandler = new Handler(Looper.getMainLooper());
 
         mDJIComponentListener = new BaseComponent.ComponentListener() {
@@ -107,7 +117,7 @@ public class djiBackend extends Application {
             @Override
             public void onComponentChange(BaseProduct.ComponentKey key, BaseComponent oldComponent, BaseComponent newComponent) {
 
-                if(newComponent != null) {
+                if (newComponent != null) {
                     newComponent.setComponentListener(mDJIComponentListener);
                 }
                 notifyStatusChange();
@@ -121,68 +131,96 @@ public class djiBackend extends Application {
 
         };
 
-        /**
-         * When starting SDK services, an instance of interface DJISDKManager.DJISDKManagerCallback will be used to listen to
-         * the SDK Registration result and the product changing.
-         */
-        /*mDJISDKManagerCallback = new DJISDKManager.SDKManagerCallback() {
+        baseTV = new TextureView(getApplicationContext());
+        baseTV.setMinimumWidth(160);
+        baseTV.setMinimumHeight(90);
 
-            //Listens to the SDK registration result
+        mReceivedVideoDataCallBack = new VideoFeeder.VideoDataCallback() {
             @Override
-            public void onRegister(DJIError error) {
-
-                if(error == DJISDKError.REGISTRATION_SUCCESS) {
-
-                    Handler handler = new Handler(Looper.getMainLooper());
-                    handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(getApplicationContext(), "Register Success (djiBackend.java)", Toast.LENGTH_LONG).show();
-                        }
-                    });
-
-                    DJISDKManager.getInstance().startConnectionToProduct();
-
-                } else {
-
-                    Handler handler = new Handler(Looper.getMainLooper());
-                    handler.post(new Runnable() {
-
-                        @Override
-                        public void run() {
-                            Toast.makeText(getApplicationContext(), "Register sdk fails, check network is available", Toast.LENGTH_LONG).show();
-                        }
-                    });
-
+            public void onReceive(byte[] videoBuffer, int size) {
+                if (vid < 10){
+                    Log.d(TAG, "onReceive: VIDEO RECEIVED: " + size);
+                    vid += 1;
                 }
-                Log.e("TAG", error.toString());
-            }
-
-            //Listens to the connected product changing, including two parts, component changing or product connection changing.
-            @Override
-            public void onProductChange(BaseProduct oldProduct, BaseProduct newProduct) {
-
-                mProduct = newProduct;
-                if(mProduct != null) {
-                    mProduct.setBaseProductListener(mDJIBaseProductListener);
+                Bundle b = new Bundle();
+                b.putByteArray("VIDEO_BUFF", videoBuffer);
+                b.putInt("BUFF_SIZE", size);
+                //b.putString("BYTE_BUFFER", );
+                try{
+                    rec.send(0,b);
+                }catch (Exception exc){
+                    Log.d(TAG,exc.toString());
                 }
 
-                notifyStatusChange();
+                /*if (mCodecManager != null) {
+                    mCodecManager.sendDataToDecoder(videoBuffer, size);
+                    Log.d(TAG, "onReceive: VIDEO SENT");
+                }else{
+                    Log.d(TAG, "onReceive: CODEC MANAGER NULL. TRYING TO INIT");
+                    onSurfaceTextureAvailable(baseTV.getSurfaceTexture(),160,90);
+                }*/
             }
         };
-        //Check the permissions before registering the application for android system 6.0 above.
-        /*int permissionCheck = ContextCompat.checkSelfPermission(getApplicationContext(), android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
-        int permissionCheck2 = ContextCompat.checkSelfPermission(getApplicationContext(), android.Manifest.permission.READ_PHONE_STATE);
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || (permissionCheck == 0 && permissionCheck2 == 0)) {
-            //This is used to start SDK services and initiate SDK.
-            DJISDKManager.getInstance().registerApp(getApplicationContext(), mDJISDKManagerCallback);
-            Toast.makeText(getApplicationContext(), "registering, pls wait...", Toast.LENGTH_LONG).show();
 
-        } else {
-            Toast.makeText(getApplicationContext(), "Please check if the permission is granted.", Toast.LENGTH_LONG).show();
-        }*/
 
+        
     }
+     /* Video functions */
+
+
+    @Override
+    public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+        Log.d(TAG, "onSurfaceTextureAvailable");
+        if (mCodecManager == null) {
+            Log.d(TAG, "onSurfaceTextureAvailable: init codecmanager");
+            mCodecManager = new DJICodecManager(getApplicationContext().getApplicationContext(), surface, width, height);
+        }
+    }
+    @Override
+    public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
+        Log.d(TAG, "onSurfaceTextureSizeChanged");
+    }
+    @Override
+    public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+        Log.d(TAG,"onSurfaceTextureDestroyed");
+        if (mCodecManager != null) {
+            mCodecManager.cleanSurface();
+            mCodecManager = null;
+        }
+        return false;
+    }
+    @Override
+    public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+        Log.d(TAG, "onSurfaceTextureUpdated: TEXTURE UPDATED");
+    }
+
+    public void initPreviewer() {
+        Log.d(TAG, "initPreviewer: PREVIEW INIT");
+        BaseProduct product = getProductInstance();
+        if (product == null || !product.isConnected()) {
+            //showToast("DISCONNECTED...");
+            Log.d(TAG, "initPreviewer: DISCONNECTED");
+        } else {
+            if (null != baseTV) {
+                Log.d(TAG, "initPreviewer: basetvlistener");
+                baseTV.setSurfaceTextureListener(this);
+            }
+            if (!product.getModel().equals(Model.UNKNOWN_AIRCRAFT)) {
+                Log.d(TAG, "initPreviewer: videocallback");
+                VideoFeeder.getInstance().getPrimaryVideoFeed().setCallback(mReceivedVideoDataCallBack);
+            }
+        }
+    }
+    public void uninitPreviewer() {
+        Log.d(TAG, "uninitPreviewer: RUN");
+        Camera camera = getCameraInstance();
+        if (camera != null){
+            // Reset the callback
+            VideoFeeder.getInstance().getPrimaryVideoFeed().setCallback(null);
+        }
+    }
+
+
 
     private void notifyStatusChange() {
         mHandler.removeCallbacks(updateRunnable);

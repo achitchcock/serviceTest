@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.SurfaceTexture;
 import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.os.Handler;
@@ -14,12 +15,14 @@ import android.os.Looper;
 import android.os.ResultReceiver;
 import android.provider.Settings;
 import android.util.Log;
+import android.view.TextureView;
 import android.widget.Toast;
 
 import org.jetbrains.annotations.Nullable;
 
 import dji.common.error.DJIError;
 import dji.common.flightcontroller.FlightControllerState;
+import dji.common.product.Model;
 import dji.common.util.CommonCallbacks;
 import dji.sdk.base.BaseProduct;
 import dji.sdk.camera.VideoFeeder;
@@ -43,7 +46,7 @@ import java.util.Calendar;
  * Created by Aaron on 4/21/2018.
  */
 
-public class backgroundService extends Service {
+public class backgroundService extends Service { //implements TextureView.SurfaceTextureListener {
 
     private MediaPlayer player;
     private appRegistrar arc;
@@ -53,9 +56,11 @@ public class backgroundService extends Service {
     private djiBackend djiBack;
     private FlightController flightController;
 
-    //protected VideoFeeder.VideoDataCallback mReceivedVideoDataCallBack = null;
-    protected DJICodecManager mCodecManager = null;
+    private TextureView baseTV;
 
+    protected VideoFeeder.VideoDataCallback mReceivedVideoDataCallBack = null;
+    protected DJICodecManager mCodecManager = null;
+    private String TAG = "SERVICE_DRONE";
 
     public backgroundService() {
         super();
@@ -71,31 +76,34 @@ public class backgroundService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         final String action = intent.getAction();
-        Log.d("SERVICE_DRONE","onStartCommand run in service.");
+        //Log.d(TAG,"onStartCommand run in service.");
         switch (action){
             case "START_SERVICE":{
-                //Helper.install(getApplication());
+                new sdkLoader(getApplication());
+                baseTV = new TextureView(getApplicationContext());
                 rec = intent.getParcelableExtra("dataR");
                 String recName= intent.getStringExtra("nameTag");
-                Log.d("SERVICE DRONE:","received name="+recName);
+                Log.d(TAG,"received name="+recName);
 
-                Log.d("SERVICE_DRONE","sending data back to activity");
+                Log.d(TAG,"sending data back to activity");
                 Bundle b = new Bundle();
                 b.putString("DATA", "Service Started");
                 try{
-                    rec.send(1,b);
+                    rec.send(0,b);
                 }catch (Exception exc){
-                    Log.d("SERVICE_DRONE: ",exc.toString());
+                    Log.d(TAG,exc.toString());
                 }
 
                 player = MediaPlayer.create(this,
                         Settings.System.DEFAULT_RINGTONE_URI);
                 player.setLooping(true);
                 player.start();
+                arc = new appRegistrar(getApplication());
                 break;
             }
             case "LOAD_SDK":{
-                new sdkLoader(getApplication());
+                // now completed on START_SERVICE
+                //new sdkLoader(getApplication());
                 //arc = new appRegistrar(getApplication());
                 break;
             }
@@ -108,12 +116,13 @@ public class backgroundService extends Service {
                     Bundle b = new Bundle();
                     b.putString("DATA", "status retreived: "+ count);
                     count += 1;
-                    rec.send(1,b);
+                    rec.send(0,b);
                 }
                 break;
             }
             case "CONNECT_DRONE":{
-                Log.d("SERVICE_DRONE","calling setupDroneConnection");
+                Log.d(TAG,"calling setupDroneConnection");
+                initFlightController();
                 setupDroneConnection();
                 break;
             }
@@ -138,37 +147,48 @@ public class backgroundService extends Service {
                 flightControllerStatus();
                 break;
             }
-
-        }
-        //getApplication();
-        //return super.onStartCommand(intent, flags, startId);
-        Handler handler = new Handler(Looper.getMainLooper());
-        handler.post(new Runnable() {
-
-            @Override
-            public void run() {
-                Toast.makeText(getApplicationContext(),
-                        action,
-                        Toast.LENGTH_SHORT).show();
+            case "START_VIDEO":{
+                //Camera camera = djiBack.getCameraInstance();
+                //videoSetup();
+                djiBack.initPreviewer();
+                break;
             }
-        });
-
-
-
+            case "STOP_VIDEO":{
+                //uninitPreviewer();
+                break;
+            }
+        }
+        //showToast(action);
         return START_STICKY;
     }
 
-    private void videoSetup(){
+    /*private void videoSetup(){
+        showToast("Video setup called");
         // The callback for receiving the raw H264 video data for camera live view
-        /*mReceivedVideoDataCallBack = new VideoFeeder.VideoDataCallback() {
+        mReceivedVideoDataCallBack = new VideoFeeder.VideoDataCallback() {
             @Override
             public void onReceive(byte[] videoBuffer, int size) {
+                Log.d(TAG, "onReceive: VIDEO RECEIVED: "+ size);
                 if (mCodecManager != null) {
                     mCodecManager.sendDataToDecoder(videoBuffer, size);
+                    Log.d(TAG, "onReceive: VIDEO SENT");
                 }
             }
-        };*/
-    }
+        };
+
+        // part 2
+        BaseProduct product = djiBack.getProductInstance();
+        if (product == null || !product.isConnected()) {
+            showToast("Disconnected");
+        } else {
+            //if (null != baseTV) {
+            //    baseTV.setSurfaceTextureListener(this);
+            //}
+            if (!product.getModel().equals(Model.UNKNOWN_AIRCRAFT)) {
+                VideoFeeder.getInstance().getPrimaryVideoFeed().setCallback(mReceivedVideoDataCallBack);
+            }
+        }
+    }*/
 
 
 
@@ -176,7 +196,7 @@ public class backgroundService extends Service {
         try {
             initFlightController();
         }catch (Exception e){
-            Log.d("SERVICE_DRONE", "failed to init flight controller");
+            Log.d(TAG, "failed to init flight controller");
         }
         String state = "";
         if( flightController != null){
@@ -194,12 +214,12 @@ public class backgroundService extends Service {
 
 
         }else {
-            Log.d("SERVICE_DRONE", "flightControllerStatus: NULL");
+            Log.d(TAG, "flightControllerStatus: NULL");
         }
         if (rec != null){
             Bundle b = new Bundle();
             b.putString("FC_STATUS", "Flight Controller status: "+ state);
-            rec.send(3,b);
+            rec.send(0,b);
         }
     }
 
@@ -252,15 +272,16 @@ public class backgroundService extends Service {
     private void setupDroneConnection(){
         if(djiBack == null){
             djiBack = new djiBackend();
-            //djiBack.setContext(getApplication());
+            djiBack.setContext(getApplication());
+            djiBack.setResultReceiver(rec);
             djiBack.onCreate();
 
-            Log.d("SERVICE_DRONE", "djiBackend created");
+            Log.d(TAG, "djiBackend created");
         }
         IntentFilter filter = new IntentFilter();
         filter.addAction(djiBack.FLAG_CONNECTION_CHANGE);
         registerReceiver(mReceiver, filter);
-        Log.d( "SERVICE_DRONE", "IntentFilter created" );
+        Log.d( TAG, "IntentFilter created" );
     }
 
 
@@ -268,7 +289,7 @@ public class backgroundService extends Service {
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            Log.d("SERVICE_DRONE", "broadcast receiver hit...");
+            Log.d(TAG, "broadcast receiver hit...");
             refreshSDKRelativeUI();
         }
     };
@@ -279,7 +300,7 @@ public class backgroundService extends Service {
         String connectionStatus = "Status: ";
 
         if (null != mProduct && mProduct.isConnected()) {
-            Log.v("SERVICE_DRONE", "refreshSDK: True");
+            //Log.v(TAG, "refreshSDK: True");
             String str = mProduct instanceof Aircraft ? "DJIAircraft" : "DJIHandHeld";
             //mTextConnectionStatus.setText("Status: " + str + " connected");
 
@@ -290,7 +311,7 @@ public class backgroundService extends Service {
                 productText = ("Product Information");
             }
         } else {
-            Log.v("SERVICE_DRONE", "refreshSDK: False");
+            Log.v(TAG, "refreshSDK: False");
             //mBtnOpen.setEnabled(false);
 
             productText = "Product Information";
@@ -301,32 +322,28 @@ public class backgroundService extends Service {
             Bundle b = new Bundle();
             b.putString("CONNECTION_STATUS",  connectionStatus);
             b.putString("PRODUCT",productText);
-            rec.send(2,b);
+            rec.send(0,b);
         }
     }
 
+
+
     @Override
     public void onDestroy() {
-        Log.d("SERVICE_DRONE","onDestroy run in service");
+        Log.d(TAG,"onDestroy run in service");
         player.stop();
         try {
             unregisterReceiver(mReceiver);
         }catch (Exception exc){
-            Log.d("SERVICE_DRONE", exc.toString());
+            Log.d(TAG, "Receiver not regestered. No Problem.");
+        }
+        try{
+            djiBack.uninitPreviewer();
+        }catch (Exception e){
+            Log.d(TAG, "Previewer not created.  No Problem.");
         }
 
-        Handler handler = new Handler(Looper.getMainLooper());
-        handler.post(new Runnable() {
-
-            @Override
-            public void run() {
-                Toast.makeText(getApplicationContext(),
-                        "Service stoped.",
-                        Toast.LENGTH_SHORT).show();
-            }
-        });
-
-
+        showToast("Service stoped.");
         super.onDestroy();
     }
 

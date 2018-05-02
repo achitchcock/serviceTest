@@ -45,15 +45,7 @@ public class appRegistrar {
     public appRegistrar(Application app){
         parent = app;
         TAG = parent.getClass().getName();
-        //if(Looper.myLooper() == null) {
-        //    Looper.prepare();
-        //}
-        //mHandler = new Handler(parent.getMainLooper());
-        //showToast(TAG);
-        //checkAndRequestPermissions();
-
         startSDKRegistration();
-
     }
 
     private void startSDKRegistration() {
