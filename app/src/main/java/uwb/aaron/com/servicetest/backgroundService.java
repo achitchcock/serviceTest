@@ -56,7 +56,7 @@ public class backgroundService extends Service { //implements TextureView.Surfac
     private djiBackend djiBack;
     private FlightController flightController;
 
-    private TextureView baseTV;
+    private TextureView baseTV;   // change  to a texture object???
 
     protected VideoFeeder.VideoDataCallback mReceivedVideoDataCallBack = null;
     protected DJICodecManager mCodecManager = null;
@@ -153,13 +153,13 @@ public class backgroundService extends Service { //implements TextureView.Surfac
                 djiBack.initPreviewer();
                 break;
             }
-            case "STOP_VIDEO":{
+            case "STOP_VIDEO": {
                 //uninitPreviewer();
                 break;
             }
         }
         //showToast(action);
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     /*private void videoSetup(){
@@ -339,6 +339,7 @@ public class backgroundService extends Service { //implements TextureView.Surfac
         }
         try{
             djiBack.uninitPreviewer();
+            djiBack.onTerminate();
         }catch (Exception e){
             Log.d(TAG, "Previewer not created.  No Problem.");
         }
