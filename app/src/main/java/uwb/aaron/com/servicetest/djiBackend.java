@@ -60,7 +60,7 @@ public class djiBackend extends Application implements TextureView.SurfaceTextur
     protected DJICodecManager mCodecManager = null;
     private ResultReceiver rec;
 
-
+    private boolean frameReady;
     private int vid = 0;
     public void setContext(Application application) {
         instance = application;
@@ -157,11 +157,14 @@ public class djiBackend extends Application implements TextureView.SurfaceTextur
         mCodecManager.setYuvDataCallback(new DJICodecManager.YuvDataCallback() {
             @Override
             public void onYuvDataReceived(ByteBuffer yuvFrame, int dataSize, int width, int height) {
-                if(vid < 10){
-                    vid += 1;
+                if(frameReady == false){
+                    Log.d(TAG, "onYuvDataReceived: FRAME NOT READY");
                     return;
+                }else{
+                    frameReady = false;
+                    // processing frame. don't start a new one yet
                 }
-                vid = 0;
+                long tStart = System.currentTimeMillis(); // time logging check
                 Log.d(TAG, "onYuvDataReceived: DATA SIZE: "+ dataSize + " Width: "+width+ " Height " + height);
                 byte[] dat = new byte[dataSize];
                 yuvFrame.get(dat);
@@ -207,14 +210,14 @@ public class djiBackend extends Application implements TextureView.SurfaceTextur
                 YuvImage yuvimage = new YuvImage(bytes, ImageFormat.NV21, width, height, null);
                 Log.d(TAG, "onYuvDataReceived: YUVIMAGE created");
                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                yuvimage.compressToJpeg(new Rect(0, 0, width, height), 80, baos);
+                yuvimage.compressToJpeg(new Rect(0, 0, width, height), 70, baos);
                 Log.d(TAG, "onYuvDataReceived: compress");
                 byte[] jdata = baos.toByteArray();
                 //new SavePhotoTask().execute(jdata);
                 Log.d(TAG, "onYuvDataReceived: JPEG SIZE: " + jdata.length);
                 Bundle b = new Bundle();
                 //byte[] dat = new byte[dataSize/2];
-
+                Log.d(TAG,"Encoding Time: "+ (System.currentTimeMillis() - tStart));
                 b.putByteArray("VIDEO_BUFF",jdata);
                 b.putInt("BUFF_SIZE", jdata.length);
                 b.putString("ServiceTag","djiBackend");
@@ -223,6 +226,13 @@ public class djiBackend extends Application implements TextureView.SurfaceTextur
                 }catch (Exception exc){
                     Log.d(TAG,exc.toString());
                 }
+
+                // time logging
+                long tEnd = System.currentTimeMillis();
+                long tDelta = tEnd - tStart;
+                double elapsedSeconds = tDelta / 1000.0;
+                Log.d(TAG,"Total Time: "+elapsedSeconds + "sec.  "+ tDelta + " ms.");
+                frameReady = true;
             }
         });
 
@@ -246,7 +256,7 @@ public class djiBackend extends Application implements TextureView.SurfaceTextur
 
                     if (mCodecManager != null) {
                         mCodecManager.sendDataToDecoder(videoBuffer, size);
-                        Log.d(TAG, "onReceive: VIDEO SENT: " + vid);
+                        Log.d(TAG, "onReceive: VIDEO SENT to decoder " );
                         //Bitmap b = baseTV.getBitmap();
                         //Log.d(TAG, "onReceive: BITMAP"+ baseTV.getBitmap().toString());
                     } else {
@@ -261,7 +271,7 @@ public class djiBackend extends Application implements TextureView.SurfaceTextur
         };
 
 
-        
+        frameReady = true;
     }
 
     @Override

@@ -94,10 +94,11 @@ public class backgroundService extends Service { //implements TextureView.Surfac
                     Log.d(TAG,exc.toString());
                 }
 
-                player = MediaPlayer.create(this,
+                /*player = MediaPlayer.create(this,
                         Settings.System.DEFAULT_RINGTONE_URI);
                 player.setLooping(true);
                 player.start();
+                */
                 arc = new appRegistrar(getApplication());
                 break;
             }
